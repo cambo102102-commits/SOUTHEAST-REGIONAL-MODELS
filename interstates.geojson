@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "I-75"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-84.39, 33.75],
+          [-84.30, 34.50],
+          [-84.15, 35.25]
+        ]
+      }
+    }
+  ]
+}
