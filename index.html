@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Southeast Radar-Style Map</title>
+
+  <title>Southeast Weather Map</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
@@ -14,6 +15,7 @@
       height: 100%;
       background: #000;
       overflow: hidden;
+      font-family: Arial, sans-serif;
     }
 
     #map {
@@ -27,18 +29,154 @@
     }
 
     .state-label {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      color: #6f6f6f;
+      font-size: 11px;
+      font-weight: 600;
+      text-shadow: 0 0 2px #000, 0 0 4px #000;
+      padding: 0;
+    }
+
+    .state-label::before {
+      display: none !important;
+    }
+
+    .model-panel {
+      position: absolute;
+      top: 80px;
+      left: 12px;
+      z-index: 1000;
+      background: rgba(10, 10, 10, 0.78);
+      border: 1px solid #555;
+      border-radius: 8px;
+      padding: 10px;
       color: white;
-      font-size: 13px;
-      font-weight: bold;
-      text-shadow: 0 0 5px black;
+      width: 175px;
+    }
+
+    .model-panel h3 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      text-align: center;
+    }
+
+    .model-panel button {
+      width: 100%;
+      margin: 3px 0;
+      padding: 6px;
+      background: #1b1b1b;
+      color: white;
+      border: 1px solid #555;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .model-panel button.active {
+      background: #0078ff;
+      border-color: #66b2ff;
+    }
+
+    .model-panel hr {
+      border: none;
+      border-top: 1px solid #444;
+      margin: 8px 0;
+    }
+
+    #logo-container {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 2000;
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 8px;
+      padding: 4px;
+    }
+
+    #logo-container img {
+      display: block;
+      max-width: 220px;
+      max-height: 120px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      filter: drop-shadow(0 0 6px rgba(0,0,0,0.7));
+    }
+
+    @media (max-width: 768px) {
+      .model-panel {
+        top: 70px;
+        left: 8px;
+        width: 145px;
+        padding: 8px;
+      }
+
+      .model-panel h3 {
+        font-size: 12px;
+      }
+
+      .model-panel button {
+        font-size: 11px;
+        padding: 5px;
+      }
+
+      #logo-container {
+        top: 8px;
+        right: 8px;
+      }
+
+      #logo-container img {
+        max-width: 120px;
+        max-height: 70px;
+      }
     }
   </style>
 </head>
 
 <body>
+
   <div id="map"></div>
 
+  <div id="logo-container">
+    <img src="logo.png" alt="Logo">
+  </div>
+
+  <div class="model-panel">
+    <h3>Weather Layers</h3>
+
+    <button onclick="setModel('hrrr')" id="model-hrrr">HRRR</button>
+    <button onclick="setModel('nam')" id="model-nam">NAM</button>
+    <button onclick="setModel('gfs')" id="model-gfs">GFS</button>
+
+    <hr>
+
+    <button onclick="setHour('F0000')" id="hour-F0000">Now</button>
+    <button onclick="setHour('F0060')" id="hour-F0060">+1 hr</button>
+    <button onclick="setHour('F0120')" id="hour-F0120">+2 hr</button>
+    <button onclick="setHour('F0180')" id="hour-F0180">+3 hr</button>
+    <button onclick="setHour('F0360')" id="hour-F0360">+6 hr</button>
+    <button onclick="setHour('F0720')" id="hour-F0720">+12 hr</button>
+    <button onclick="setHour('F1440')" id="hour-F1440">+24 hr</button>
+
+    <hr>
+
+    <button onclick="toggleReflectivity()" id="toggle-reflectivity">
+      Reflectivity: OFF
+    </button>
+
+    <button onclick="toggleInterstates()" id="toggle-interstates">
+      Interstates: ON
+    </button>
+
+    <button onclick="toggleCounties()" id="toggle-counties">
+      Counties: ON
+    </button>
+  </div>
+
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/topojson-client@3"></script>
 
   <script>
     const map = L.map("map", {
@@ -47,13 +185,13 @@
       minZoom: 5,
       maxZoom: 9,
       maxBounds: [
-        [23.0, -95.5],
-        [37.5, -74.0]
+        [23.0, -96.5],
+        [38.0, -74.0]
       ],
       maxBoundsViscosity: 1.0
     });
 
-    map.setView([32.7, -84.8], 6);
+    map.setView([32.5, -87.0], 6);
 
     const allowedStates = [
       "Tennessee",
@@ -63,8 +201,32 @@
       "Florida",
       "Alabama",
       "Mississippi",
-      "Arkansas"
+      "Arkansas",
+      "Louisiana"
     ];
+
+    const allowedStateFips = [
+      "47", // Tennessee
+      "37", // North Carolina
+      "45", // South Carolina
+      "13", // Georgia
+      "12", // Florida
+      "01", // Alabama
+      "28", // Mississippi
+      "05", // Arkansas
+      "22"  // Louisiana
+    ];
+
+    let currentModel = "hrrr";
+    let currentHour = "F0000";
+    let reflectivityOn = false;
+    let currentReflectivityLayer = null;
+
+    let interstateLayer;
+    let interstatesVisible = true;
+
+    let countyLayer;
+    let countiesVisible = true;
 
     fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
       .then(response => response.json())
@@ -78,20 +240,159 @@
 
         L.geoJSON(filteredStates, {
           style: {
-            color: "#888",
-            weight: 1.5,
-            fillColor: "#050505",
+            color: "#4a4a4a",
+            weight: 1,
+            fillColor: "#000000",
             fillOpacity: 1
           },
           onEachFeature: function(feature, layer) {
             layer.bindTooltip(feature.properties.name, {
               permanent: true,
               direction: "center",
-              className: "state-label"
+              className: "state-label",
+              opacity: 1
             });
           }
         }).addTo(map);
       });
+
+    fetch("https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json")
+      .then(response => response.json())
+      .then(us => {
+        const counties = topojson.feature(us, us.objects.counties);
+
+        const filteredCounties = {
+          type: "FeatureCollection",
+          features: counties.features.filter(feature => {
+            const fips = String(feature.id).padStart(5, "0").substring(0, 2);
+            return allowedStateFips.includes(fips);
+          })
+        };
+
+        countyLayer = L.geoJSON(filteredCounties, {
+          style: {
+            color: "#2a2a2a",
+            weight: 0.35,
+            opacity: 0.55,
+            fillOpacity: 0
+          }
+        });
+
+        countyLayer.addTo(map);
+      });
+
+    fetch("interstates.geojson")
+      .then(response => response.json())
+      .then(data => {
+        interstateLayer = L.geoJSON(data, {
+          style: {
+            color: "#2b5ea8",
+            weight: 0.7,
+            opacity: 0.18
+          }
+        });
+
+        interstateLayer.addTo(map);
+      })
+      .catch(() => {
+        console.warn("interstates.geojson not found yet.");
+      });
+
+    function getReflectivityUrl(model, hour) {
+      return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${model}::REFD-${hour}-0/{z}/{x}/{y}.png`;
+    }
+
+    function updateReflectivityLayer() {
+      if (currentReflectivityLayer) {
+        map.removeLayer(currentReflectivityLayer);
+        currentReflectivityLayer = null;
+      }
+
+      if (!reflectivityOn) return;
+
+      currentReflectivityLayer = L.tileLayer(
+        getReflectivityUrl(currentModel, currentHour),
+        {
+          opacity: 0.72
+        }
+      ).addTo(map);
+    }
+
+    function setModel(model) {
+      currentModel = model;
+
+      document.querySelectorAll("[id^='model-']").forEach(btn => {
+        btn.classList.remove("active");
+      });
+
+      document.getElementById(`model-${model}`).classList.add("active");
+
+      updateReflectivityLayer();
+    }
+
+    function setHour(hour) {
+      currentHour = hour;
+
+      document.querySelectorAll("[id^='hour-']").forEach(btn => {
+        btn.classList.remove("active");
+      });
+
+      document.getElementById(`hour-${hour}`).classList.add("active");
+
+      updateReflectivityLayer();
+    }
+
+    function toggleReflectivity() {
+      reflectivityOn = !reflectivityOn;
+
+      const button = document.getElementById("toggle-reflectivity");
+
+      if (reflectivityOn) {
+        button.textContent = "Reflectivity: ON";
+        button.classList.add("active");
+      } else {
+        button.textContent = "Reflectivity: OFF";
+        button.classList.remove("active");
+      }
+
+      updateReflectivityLayer();
+    }
+
+    function toggleInterstates() {
+      if (!interstateLayer) return;
+
+      const button = document.getElementById("toggle-interstates");
+
+      if (interstatesVisible) {
+        map.removeLayer(interstateLayer);
+        button.textContent = "Interstates: OFF";
+      } else {
+        interstateLayer.addTo(map);
+        button.textContent = "Interstates: ON";
+      }
+
+      interstatesVisible = !interstatesVisible;
+    }
+
+    function toggleCounties() {
+      if (!countyLayer) return;
+
+      const button = document.getElementById("toggle-counties");
+
+      if (countiesVisible) {
+        map.removeLayer(countyLayer);
+        button.textContent = "Counties: OFF";
+      } else {
+        countyLayer.addTo(map);
+        button.textContent = "Counties: ON";
+      }
+
+      countiesVisible = !countiesVisible;
+    }
+
+    setModel("hrrr");
+    setHour("F0000");
   </script>
+
 </body>
 </html>
