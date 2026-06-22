@@ -1,9 +1,8 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <title>Southeast Weather Map</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -64,8 +63,8 @@
 
     .model-panel button {
       width: 100%;
-      margin: 3px 0;
-      padding: 6px;
+      margin: 4px 0;
+      padding: 7px;
       background: #1b1b1b;
       color: white;
       border: 1px solid #555;
@@ -83,6 +82,13 @@
       border: none;
       border-top: 1px solid #444;
       margin: 8px 0;
+    }
+
+    #loop-status {
+      text-align: center;
+      font-size: 12px;
+      color: #aaa;
+      margin: 6px 0;
     }
 
     #logo-container {
@@ -146,25 +152,17 @@
   <div class="model-panel">
     <h3>Weather Layers</h3>
 
-    <button onclick="setModel('hrrr')" id="model-hrrr">HRRR</button>
-    <button onclick="setModel('nam')" id="model-nam">NAM</button>
-    <button onclick="setModel('gfs')" id="model-gfs">GFS</button>
-
-    <hr>
-
-    <button onclick="setHour('F0000')" id="hour-F0000">Now</button>
-    <button onclick="setHour('F0060')" id="hour-F0060">+1 hr</button>
-    <button onclick="setHour('F0120')" id="hour-F0120">+2 hr</button>
-    <button onclick="setHour('F0180')" id="hour-F0180">+3 hr</button>
-    <button onclick="setHour('F0360')" id="hour-F0360">+6 hr</button>
-    <button onclick="setHour('F0720')" id="hour-F0720">+12 hr</button>
-    <button onclick="setHour('F1440')" id="hour-F1440">+24 hr</button>
-
-    <hr>
-
     <button onclick="toggleReflectivity()" id="toggle-reflectivity">
-      Reflectivity: OFF
+      HRRR Reflectivity: OFF
     </button>
+
+    <button onclick="toggleLoop()" id="toggle-loop">
+      Play Loop
+    </button>
+
+    <div id="loop-status">Frame: Now</div>
+
+    <hr>
 
     <button onclick="toggleInterstates()" id="toggle-interstates">
       Interstates: ON
@@ -206,27 +204,40 @@
     ];
 
     const allowedStateFips = [
-      "47", // Tennessee
-      "37", // North Carolina
-      "45", // South Carolina
-      "13", // Georgia
-      "12", // Florida
-      "01", // Alabama
-      "28", // Mississippi
-      "05", // Arkansas
-      "22"  // Louisiana
+      "47", "37", "45", "13", "12", "01", "28", "05", "22"
     ];
 
-    let currentModel = "hrrr";
-    let currentHour = "F0000";
     let reflectivityOn = false;
     let currentReflectivityLayer = null;
+
+    let loopRunning = false;
+    let loopTimer = null;
+    let loopIndex = 0;
 
     let interstateLayer;
     let interstatesVisible = true;
 
     let countyLayer;
     let countiesVisible = true;
+
+    const hrrrFrames = [
+      { code: "F0000", label: "Now" },
+      { code: "F0060", label: "+1 hr" },
+      { code: "F0120", label: "+2 hr" },
+      { code: "F0180", label: "+3 hr" },
+      { code: "F0240", label: "+4 hr" },
+      { code: "F0300", label: "+5 hr" },
+      { code: "F0360", label: "+6 hr" },
+      { code: "F0420", label: "+7 hr" },
+      { code: "F0480", label: "+8 hr" },
+      { code: "F0540", label: "+9 hr" },
+      { code: "F0600", label: "+10 hr" },
+      { code: "F0660", label: "+11 hr" },
+      { code: "F0720", label: "+12 hr" },
+      { code: "F0840", label: "+14 hr" },
+      { code: "F0960", label: "+16 hr" },
+      { code: "F1080", label: "+18 hr" }
+    ];
 
     fetch("https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json")
       .then(response => response.json())
@@ -298,8 +309,8 @@
         console.warn("interstates.geojson not found yet.");
       });
 
-    function getReflectivityUrl(model, hour) {
-      return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/${model}::REFD-${hour}-0/{z}/{x}/{y}.png`;
+    function getHRRRUrl(hourCode) {
+      return `https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/hrrr::REFD-${hourCode}-0/{z}/{x}/{y}.png`;
     }
 
     function updateReflectivityLayer() {
@@ -310,36 +321,14 @@
 
       if (!reflectivityOn) return;
 
-      currentReflectivityLayer = L.tileLayer(
-        getReflectivityUrl(currentModel, currentHour),
-        {
-          opacity: 0.72
-        }
-      ).addTo(map);
-    }
+      const frame = hrrrFrames[loopIndex];
 
-    function setModel(model) {
-      currentModel = model;
+      document.getElementById("loop-status").textContent =
+        "Frame: " + frame.label;
 
-      document.querySelectorAll("[id^='model-']").forEach(btn => {
-        btn.classList.remove("active");
-      });
-
-      document.getElementById(`model-${model}`).classList.add("active");
-
-      updateReflectivityLayer();
-    }
-
-    function setHour(hour) {
-      currentHour = hour;
-
-      document.querySelectorAll("[id^='hour-']").forEach(btn => {
-        btn.classList.remove("active");
-      });
-
-      document.getElementById(`hour-${hour}`).classList.add("active");
-
-      updateReflectivityLayer();
+      currentReflectivityLayer = L.tileLayer(getHRRRUrl(frame.code), {
+        opacity: 0.72
+      }).addTo(map);
     }
 
     function toggleReflectivity() {
@@ -348,14 +337,64 @@
       const button = document.getElementById("toggle-reflectivity");
 
       if (reflectivityOn) {
-        button.textContent = "Reflectivity: ON";
+        button.textContent = "HRRR Reflectivity: ON";
         button.classList.add("active");
       } else {
-        button.textContent = "Reflectivity: OFF";
+        button.textContent = "HRRR Reflectivity: OFF";
         button.classList.remove("active");
+        stopLoop();
       }
 
       updateReflectivityLayer();
+    }
+
+    function toggleLoop() {
+      if (!reflectivityOn) {
+        reflectivityOn = true;
+
+        const reflectivityButton =
+          document.getElementById("toggle-reflectivity");
+
+        reflectivityButton.textContent = "HRRR Reflectivity: ON";
+        reflectivityButton.classList.add("active");
+
+        updateReflectivityLayer();
+      }
+
+      if (loopRunning) {
+        stopLoop();
+      } else {
+        startLoop();
+      }
+    }
+
+    function startLoop() {
+      loopRunning = true;
+
+      const button = document.getElementById("toggle-loop");
+      button.textContent = "Pause Loop";
+      button.classList.add("active");
+
+      loopTimer = setInterval(() => {
+        loopIndex = (loopIndex + 1) % hrrrFrames.length;
+        updateReflectivityLayer();
+      }, 900);
+    }
+
+    function stopLoop() {
+      loopRunning = false;
+
+      if (loopTimer) {
+        clearInterval(loopTimer);
+        loopTimer = null;
+      }
+
+      const button = document.getElementById("toggle-loop");
+
+      if (button) {
+        button.textContent = "Play Loop";
+        button.classList.remove("active");
+      }
     }
 
     function toggleInterstates() {
@@ -389,9 +428,6 @@
 
       countiesVisible = !countiesVisible;
     }
-
-    setModel("hrrr");
-    setHour("F0000");
   </script>
 
 </body>
